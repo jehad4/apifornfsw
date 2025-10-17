@@ -1,5 +1,5 @@
-# Use Node.js 18 as the base image
-FROM node:22.20.0
+# Use Node.js 22 to match local environment
+FROM node:22
 
 # Set working directory
 WORKDIR /app
@@ -10,7 +10,7 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Install Chromium for Puppeteer
+# Install Chromium and dependencies for Puppeteer
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -41,8 +41,8 @@ COPY . .
 # Set Puppeteer executable path
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Expose port
-EXPOSE 3000
+# Expose port (Render requires 10000 for free tier)
+EXPOSE 10000
 
 # Start the app
 CMD ["npm", "start"]
