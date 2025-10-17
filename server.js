@@ -22,6 +22,9 @@ app.get('/api/album/:model', async (req, res) => {
     const cacheDir = path.join(__dirname, 'cache', model);
     const cacheFile = path.join(cacheDir, 'images.json');
 
+    // Ensure cache directory exists
+    await fs.mkdir(cacheDir, { recursive: true });
+
     // Check cache
     try {
       const cachedData = await fs.readFile(cacheFile, 'utf8');
@@ -51,7 +54,6 @@ app.get('/api/album/:model', async (req, res) => {
           '--disable-features=IsolateOrigins,site-per-process',
           '--blink-settings=imagesEnabled=true'
         ];
-        // Add proxy if provided
         if (process.env.PROXY_SERVER) {
           browserArgs.push(`--proxy-server=${process.env.PROXY_SERVER}`);
         }
