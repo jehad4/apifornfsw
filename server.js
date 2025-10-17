@@ -5,6 +5,7 @@ const path = require('path');
 const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const API_KEY = 'jehad4'; // Hardcoded for simplicity; move to .env for production
 
 // Middleware
 app.use(express.json());
@@ -68,7 +69,7 @@ app.get('/api/album/:model', async (req, res) => {
           return Array.from(document.querySelectorAll('a[href*="/20"], a.post-title, a[href*="/gallery/"]'))
             .map(a => a.href)
             .filter(href => href && href.includes('ahottie.net'))
-            .slice(0, 3);
+            .slice(0, 5);
         });
 
         // Try tag page if no galleries
@@ -81,7 +82,7 @@ app.get('/api/album/:model', async (req, res) => {
             return Array.from(document.querySelectorAll('a[href*="/20"], a.post-title, a[href*="/gallery/"]'))
               .map(a => a.href)
               .filter(href => href && href.includes('ahottie.net'))
-              .slice(0, 3);
+              .slice(0, 5);
           });
         }
 
@@ -96,9 +97,9 @@ app.get('/api/album/:model', async (req, res) => {
             .slice(0, 50);
         });
 
-        // If no images, try galleries
+        // Try galleries
         for (const link of galleryLinks) {
-          if (imageUrls.length > 0) break;
+          if (imageUrls.length >= 20) break;
           console.log(`Trying gallery: ${link}`);
           await page.goto(link, { waitUntil: 'networkidle2', timeout: 30000 });
           await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -148,10 +149,17 @@ app.get('/api/album/:model', async (req, res) => {
   }
 });
 
-// API endpoint: GET /api/nsfw/:model
+// API endpoint: GET /api/nsfw/:model?apikey=jehad4
 app.get('/api/nsfw/:model', async (req, res) => {
   try {
-    const model = req.params.model;
+    const { model } = req.params;
+    const { apikey } = req.query;
+
+    // Validate API key
+    if (apikey !== API_KEY) {
+      return res.status(401).json({ error: 'Invalid or missing API key. Use ?apikey=jehad4' });
+    }
+
     const cacheDir = path.join(__dirname, 'cache', model);
     const cacheFile = path.join(cacheDir, 'images.json');
 
@@ -262,7 +270,7 @@ app.get('/bulk-download/:model', async (req, res) => {
 });
 
 // Health check
-app.get('/', (req, res) => res.send('NSFW Album API ready. Use /api/album/Mia Nanasawa, /api/nsfw/Mia Nanasawa, /download/Mia Nanasawa/1, or /bulk-download/Mia Nanasawa'));
+app.get('/', (req, res) => res.send('NSFW Album API ready. Use /api/album/Mia Nanasawa, /api/nsfw/Mia Nanasawa?apikey=jehad4, /download/Mia Nanasawa/1, or /bulk-download/Mia Nanasawa'));
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
