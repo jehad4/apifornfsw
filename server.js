@@ -3,10 +3,8 @@ const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const path = require('path');
 const fetch = require('node-fetch');
-require('dotenv').config();
 const app = express();
-const PORT = process.env.PORT || 10000;
-const API_KEY = process.env.API_KEY || 'jehad4';
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
@@ -22,9 +20,6 @@ app.get('/api/album/:model', async (req, res) => {
     const cacheDir = path.join(__dirname, 'cache', model);
     const cacheFile = path.join(cacheDir, 'images.json');
 
-    // Ensure cache directory exists
-    await fs.mkdir(cacheDir, { recursive: true });
-
     // Check cache
     try {
       const cachedData = await fs.readFile(cacheFile, 'utf8');
@@ -39,65 +34,54 @@ app.get('/api/album/:model', async (req, res) => {
 
     let imageUrls = [];
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 2;
 
     // Launch Puppeteer with retries
     while (attempts < maxAttempts && imageUrls.length === 0) {
       attempts++;
       try {
         console.log(`Scraping attempt ${attempts}/${maxAttempts} for ${model}...`);
-        const browserArgs = [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-gpu',
-          '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-          '--disable-features=IsolateOrigins,site-per-process',
-          '--blink-settings=imagesEnabled=true'
-        ];
-        if (process.env.PROXY_SERVER) {
-          browserArgs.push(`--proxy-server=${process.env.PROXY_SERVER}`);
-        }
         const browser = await puppeteer.launch({
-          headless: 'new',
-          args: browserArgs,
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+          ]
         });
         const page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 720 });
-        await page.setExtraHTTPHeaders({
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-        });
 
         // Try search and tags
         const searchUrl = `https://ahottie.net/?s=${encodeURIComponent(model)}`;
         const tagUrl = `https://ahottie.net/tags/${encodeURIComponent(model)}`;
         console.log(`Navigating to: ${searchUrl}`);
-        await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
         // Scroll and wait for dynamic content
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await delay(8000);
+        await delay(5000);
 
         // Extract gallery links
         let galleryLinks = await page.evaluate(() => {
           return Array.from(document.querySelectorAll('a[href*="/20"], a.post-title, a[href*="/gallery/"]'))
             .map(a => a.href)
             .filter(href => href && href.includes('ahottie.net'))
-            .slice(0, 5);
+            .slice(0, 3);
         });
 
         // Try tag page if no galleries
         if (galleryLinks.length === 0) {
           console.log(`No galleries in search, trying: ${tagUrl}`);
-          await page.goto(tagUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+          await page.goto(tagUrl, { waitUntil: 'networkidle2', timeout: 30000 });
           await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-          await delay(8000);
+          await delay(5000);
           galleryLinks = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('a[href*="/20"], a.post-title, a[href*="/gallery/"]'))
               .map(a => a.href)
               .filter(href => href && href.includes('ahottie.net'))
-              .slice(0, 5);
+              .slice(0, 3);
           });
         }
 
@@ -112,13 +96,13 @@ app.get('/api/album/:model', async (req, res) => {
             .slice(0, 50);
         });
 
-        // Try galleries
+        // If no images, try galleries
         for (const link of galleryLinks) {
-          if (imageUrls.length >= 20) break;
+          if (imageUrls.length > 0) break;
           console.log(`Trying gallery: ${link}`);
-          await page.goto(link, { waitUntil: 'networkidle2', timeout: 60000 });
+          await page.goto(link, { waitUntil: 'networkidle2', timeout: 30000 });
           await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-          await delay(8000);
+          await delay(5000);
           const newUrls = await page.evaluate(() => {
             const images = Array.from(document.querySelectorAll('img[src*="imgbox.com"], img[src*="wp-content"], .entry-content img, .post-thumbnail img, .wp-block-gallery img'));
             return images
@@ -164,17 +148,10 @@ app.get('/api/album/:model', async (req, res) => {
   }
 });
 
-// API endpoint: GET /api/nsfw/:model?apikey=jehad4
+// API endpoint: GET /api/nsfw/:model
 app.get('/api/nsfw/:model', async (req, res) => {
   try {
-    const { model } = req.params;
-    const { apikey } = req.query;
-
-    // Validate API key
-    if (apikey !== API_KEY) {
-      return res.status(401).json({ error: 'Invalid or missing API key. Use ?apikey=jehad4' });
-    }
-
+    const model = req.params.model;
     const cacheDir = path.join(__dirname, 'cache', model);
     const cacheFile = path.join(cacheDir, 'images.json');
 
@@ -285,7 +262,7 @@ app.get('/bulk-download/:model', async (req, res) => {
 });
 
 // Health check
-app.get('/', (req, res) => res.send('NSFW Album API ready. Use /api/album/Mia Nanasawa, /api/nsfw/Mia Nanasawa?apikey=jehad4, /download/Mia Nanasawa/1, or /bulk-download/Mia Nanasawa'));
+app.get('/', (req, res) => res.send('NSFW Album API ready. Use /api/album/Mia Nanasawa, /api/nsfw/Mia Nanasawa, /download/Mia Nanasawa/1, or /bulk-download/Mia Nanasawa'));
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
